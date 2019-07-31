@@ -27,6 +27,7 @@ function action_check(player)
             run_to = run_to,
             mine_at = mine_at,
             insert_in = insert_in,
+            insert_in_each = insert_in_each,
             add_craft = add_craft,
             collect_from = collect_from,
         }
@@ -193,7 +194,7 @@ end
 
 function insert_in(player, action)
     -- TODO move under some option to cheat.
-    if player.get_item_count(action.name) < action.count then
+    if player.get_item_count(action.item) < action.count then
         return false
     end
 
@@ -203,9 +204,45 @@ function insert_in(player, action)
         return false
     end
 
-    local inserted = found.insert({name=action.name, count=action.count})
-    player.remove_item({name=action.name, count=inserted})
-    floating_text("+" .. inserted .. " (" .. action.name .. ")", action.position)
+    local inserted = found.insert({name=action.item, count=action.count})
+    local removed = player.remove_item({name=action.item, count=inserted})
+    assert(inserted == removed, "Ugh ohh " .. inserted .. " != " .. removed)
+    floating_text("+" .. inserted .. " (" .. action.item .. ")", action.position)
+    return true
+end
+
+function insert_in_each(player, action)
+    local found = game.surfaces[1].find_entities_filtered{name=action.into, area=action.area}
+    if not found then
+        game.print("Did not find " .. action.into .. " at " .. serpent.line(action.area))
+        return false
+    end
+
+    local total = 0
+    for key, entity in pairs(found) do
+        local item_count = entity.get_item_count(action.item)
+
+        local to_insert = math.max(0, action.in_each - item_count)
+
+        if to_insert > 0 then
+            if player.get_item_count(action.item) < to_insert then
+                printAndQuit("Ran out of " .. action.item .. " " .. key .. "/" .. #found)
+                return false
+            end
+
+            local removed = player.remove_item({name=action.item, count=to_insert})
+            local inserted = entity.insert({name=action.item, count=to_insert})
+            if removed ~= inserted then
+                --assert(removed == inserted, "Bad insert_in_each " .. removed .. " != " .. inserted)
+                printAndQuit("Bad insert_in_each " .. removed .. " != " .. inserted)
+            end
+            total = total + removed
+
+            floating_text("-" .. removed .. " (" .. action.item .. ")", entity.position)
+        end
+    end
+
+    game.print("  Inserted " .. total .. " " .. action.item .. " into " .. #found .. " " .. action.into)
     return true
 end
 
@@ -292,10 +329,14 @@ function add_build_at(name, x, y, orient)
         {cmd="build_at", name=name, position={x, y}, orient=orient})
 end
 
--- TODO try and remove this by generating it, or dynamically searching and fueling.
-function add_insert_in(into, name, count, x, y)
+function add_insert_in(into, item, count, x, y)
     table.insert(global.action_queue,
-        {cmd="insert_in", position={x, y}, into=into, name=name, count=count})
+        {cmd="insert_in", position={x, y}, into=into, item=item, count=count})
+end
+
+function add_insert_in_each(into, item, in_each, area)
+    table.insert(global.action_queue,
+        {cmd="insert_in_each", into=into, item=item, in_each=in_each, area=area})
 end
 
 function add_add_craft(name, count, wait)
@@ -425,13 +466,8 @@ function runOnce()
     add_build_at("burner-mining-drill",               2, 8, defines.direction.west)
     add_build_at("stone-furnace",                     0, 8, defines.direction.west)
 
-    add_insert_in("burner-mining-drill", "coal", 2,   2, 4)
-    add_insert_in("burner-mining-drill", "coal", 2,   2, 6)
-    add_insert_in("burner-mining-drill", "coal", 2,   2, 8)
-
-    add_insert_in("stone-furnace",       "coal", 1,   0, 4)
-    add_insert_in("stone-furnace",       "coal", 1,   0, 6)
-    add_insert_in("stone-furnace",       "coal", 1,   0, 8)
+    add_insert_in_each("burner-mining-drill", "coal", 2,   {{2, 4}, {2, 8}})
+    add_insert_in_each("stone-furnace",       "coal", 1,   {{0, 4}, {0, 8}})
 
 ---- 1st Stone
     -- TODO add_inventory_check(stone, 5)
@@ -455,15 +491,10 @@ function runOnce()
 
     add_collect_from("burner-mining-drill", "coal", 12, 1000,  {{-3, -7}, {-1, -3}})
 
-    -- Fuel every ~26s
-    add_insert_in("burner-mining-drill", "coal", 2,   2, 4)
-    add_insert_in("burner-mining-drill", "coal", 2,   2, 6)
-    add_insert_in("burner-mining-drill", "coal", 2,   2, 8)
-
-    -- Fuel every ~45s
-    add_insert_in("stone-furnace",       "coal", 2,   0, 4)
-    add_insert_in("stone-furnace",       "coal", 2,   0, 6)
-    add_insert_in("stone-furnace",       "coal", 2,   0, 8)
+    -- Technicall 3 * (3+2) = 15, but likely only need ~10 fuel
+    -- Fuel every ~26s for burner-mining-drill, Fuel every ~45s for stone-furnace
+    add_insert_in_each("burner-mining-drill", "coal", 3,   {{2, 4}, {2, 8}})
+    add_insert_in_each("stone-furnace",       "coal", 2,   {{0, 4}, {0, 8}})
 
 ---- More coal (more is better)
     add_mine_at(2, -1, "stone", 2)
@@ -504,9 +535,9 @@ function runOnce()
     add_build_at("burner-mining-drill",               2, 10, defines.direction.west)
     add_build_at("stone-furnace",                     0, 10, defines.direction.west)
 
-    add_collect_from("burner-mining-drill", "coal", 8, 1000,  {{-3, -7}, {-1, -3}})
-    add_insert_in("burner-mining-drill", "coal", 5,   2, 10)
-    add_insert_in("stone-furnace",       "coal", 3,   0, 10)
+    add_collect_from("burner-mining-drill", "coal", 12, 1000,  {{-3, -7}, {-1, -3}})
+    add_insert_in_each("burner-mining-drill", "coal", 3,   {{2, 4}, {2, 10}})
+    add_insert_in_each("stone-furnace",       "coal", 2,   {{0, 4}, {0, 10}})
 
 ---- 5th Iron
     add_collect_from("stone-furnace", "iron-plate",   9, 1000,  {{0, 4}, {0, 16}})
@@ -522,13 +553,15 @@ function runOnce()
     add_build_at("burner-mining-drill",               2, 12, defines.direction.west)
     add_build_at("stone-furnace",                     0, 12, defines.direction.west)
 
-    add_collect_from("burner-mining-drill", "coal", 8, 1000,  {{-3, -7}, {-1, -3}})
-    add_insert_in("burner-mining-drill", "coal", 5,   2, 12)
-    add_insert_in("stone-furnace",       "coal", 3,   0, 12)
+    add_collect_from("burner-mining-drill", "coal", 15, 1000,  {{-3, -7}, {-1, -3}})
+    add_insert_in_each("burner-mining-drill", "coal", 3,   {{2, 4}, {2, 12}})
+    add_insert_in_each("stone-furnace",       "coal", 2,   {{0, 4}, {0, 12}})
 
-    -- ~15 coal, ~15 stone, ~15 iron
+    -- ~3 coal | ~13 coal, ~15 stone, ~15 iron
 
-    -- ~100 seconds
+----
+
+    -- ~104 seconds
 --]]
 
     add_wait(1, "end") -- Get finish time
@@ -543,6 +576,7 @@ script.on_event(defines.events.on_tick, function(event)
     if global.speedrunRunning then
         if (game.tick > 0 and game.tick % 500 == 0) then
             local pos = game.players[1].position
+            -- TODO action index along with queue size
             game.print(
                 "Tick " .. (game.tick / 100)
                 .. ", Pos: " .. string.format("%.1f, %.1f", pos.x, pos.y)
