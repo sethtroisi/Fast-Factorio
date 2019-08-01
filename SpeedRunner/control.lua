@@ -2,6 +2,7 @@ function action_check(player)
     local pos = player.position
 
     if game.tick < global.next_check then
+        -- global.status.ticks_waiting
         return
     end
 
@@ -9,11 +10,13 @@ function action_check(player)
         return
     end
 
-    action = global.action_queue[1]
+    local status = global.status
+    local action = global.action_queue[1]
 
     if action.cmd == "build_at" then
         if action.handler(player, action) then
             table.remove(global.action_queue, 1)
+                status.actions_complete = status.actions_complete + 1
         else
             printAndQuit('Failed "build_at" ' .. serpent.line(action))
             return
@@ -22,6 +25,9 @@ function action_check(player)
         if action.handler ~= nil then
             if action.handler(player, action) then
                 table.remove(global.action_queue, 1)
+                status.actions_complete = status.actions_complete + 1
+                status.last2 = status.last1
+                status.last1 = action.cmd
             else
                 -- Should try to do crafting at the same time?
                 return
@@ -31,24 +37,7 @@ function action_check(player)
         end
     end
 
---      if builder.get_item_count(item.name) >= item.count then
---      builder.remove_item({name=item.name, count=item.count})
-
---      if builder.mine_entity(ent) then
---          local products = ent.prototype.mineable_properties.products
---          if products then
---              -- game.print("Products: " .. ent.line(products))
---              for key, value in pairs(products) do
---                  inserted = builder.insert({name=value.name, count=math.random(value.amount_min, value.amount_max)})
---              end
---      end
---      ent.destroy()
-
---      tile = ent.surface.get_tile(ent.position)
---      game.print(ent.prototype.mineable_properties)
---      builder.mine_tile(tile)
-
-
+    -- global.status.checkpoint,
 end
 
 
@@ -142,14 +131,12 @@ function get_action()
     return table.remove(global.action_queue)
 end
 
-function add_action(action)
-    table.insert(global.action_queue, action)
+function add_action(action, queue)
+    table.insert(queue or global.action_queue, action)
 end
 
 function add_run_to(x, y)
-    table.insert(global.action_queue,
-        {cmd="run_to", handler=run_to,
-         run_goal={x=x, y=y}})
+    add_action({cmd="run_to", handler=run_to, run_goal={x=x, y=y}})
 end
 
 function mine_at(player, action)
@@ -324,44 +311,42 @@ end
 ----
 
 function add_run_to(x, y)
-    table.insert(global.action_queue,
-        {cmd="run_to", handler=run_to,
-         run_goal={x=x, y=y}})
+    add_action({cmd="run_to", handler=run_to, run_goal={x=x, y=y}})
 end
 
 function add_mine_at(x, y, name, c, type)
-    table.insert(global.action_queue,
+    add_action(
         {cmd="mine_at", handler=mine_at,
          name=name, type=type, count=c, position={x,y}})
 end
 
 function add_build_at(name, x, y, orient)
-    table.insert(global.action_queue,
+    add_action(
         {cmd="build_at", handler=build_at,
          name=name, position={x, y}, orient=orient})
 end
 
 function add_insert_in(into, item, count, x, y)
-    table.insert(global.action_queue,
+    add_action(
         {cmd="insert_in", handler=insert_in,
          position={x, y}, into=into, item=item, count=count})
 end
 
 function add_insert_in_each(into, item, in_each, area)
-    table.insert(global.action_queue,
+    add_action(
         {cmd="insert_in_each", handler=insert_in_each,
          into=into, item=item, in_each=in_each, area=area})
 end
 
 function add_add_craft(name, count, wait)
-    table.insert(global.action_queue,
+    add_action(
         {cmd="add_craft", handler=add_craft,
          name=name, count=count, wait=wait, queued=false})
 end
 
 function add_collect_from(name, item, inv_count, max_per_machine, area)
     -- inv_count => amount to have in inventory after.
-    table.insert(global.action_queue,
+    add_action(
         {cmd="collect_from", handler=collect_from,
          name=name, item=item,
          area=area,
@@ -370,7 +355,7 @@ function add_collect_from(name, item, inv_count, max_per_machine, area)
 end
 
 function add_wait_inventory(item, inv_count)
-    table.insert(global.action_queue,
+    add_action(
         {cmd="wait_inventory",
          handler= function(player, action)
             -- TODO have global wait counter.
@@ -388,7 +373,7 @@ function add_wait_inventory(item, inv_count)
 end
 
 function add_wait(ticks, msg)
-    table.insert(global.action_queue,
+    add_action(
         {cmd="wait",
          handler= function(player, action)
             game.print("Waiting " .. action.ticks .. " tick(s) " .. "@" .. game.tick .. ": " .. action.msg)
@@ -402,33 +387,7 @@ end
 ------ Setup ------
 -------------------
 
-script.on_event("start-stop-speedrun", function(event)
-    global.speedrunRunning = not global.speedrunRunning
-    game.print((global.speedrunRunning and "Starting" or "Stopping") .. " Speedrun")
-    if global.speedrunRunning then
-        if global.speedRunSetupComplete ~= true then
-            runOnce()
-        end
-    end
-end)
-
-function runOnce()
---    global.speedrunRunning = false
-    global.speedRunSetupComplete = true
-
-    global.next_check = 0
-
-    if not global.action_queue then
-        global.action_queue = {}
-    end
-
-    game.print("Adding actions to queue")
-
-    game.players[1].surface.always_day=true
-
-    -- TODO change_game_speed handler/action
-    game.speed = 5
-
+function setupQueue()
     add_run_to(0, 1.5)
 
 --- Setup early game shortcuts
@@ -642,12 +601,47 @@ function runOnce()
 
 --]]
 
-    -- ~5 coal | ~5 coal, ~13 stone, ~9 iron
-    -- ~95 seconds
+    -- ~9 coal 7 wood 1 wooden-chest
+    --    ~8 coal, ~6 stone, ~16 iron
+    -- ~108 seconds
 
     add_wait(1, "end") -- Get finish time
+end
 
+-----
+
+script.on_event("start-stop-speedrun", function(event)
+    global.speedrunRunning = not global.speedrunRunning
+    game.print((global.speedrunRunning and "Starting" or "Stopping") .. " Speedrun")
+    if global.speedrunRunning then
+        if global.speedRunSetupComplete ~= true then
+            runOnce()
+        end
+    end
+end)
+
+function runOnce()
+    if global.speedRunSetupComplete then return end
+    global.speedRunSetupComplete = true
+
+    global.action_queue = {}
+    game.print("Adding actions to queue")
+    setupQueue()
     game.print("Action Queue: " .. #global.action_queue .. " actions")
+
+    global.status = {
+        actions_complete = 0,
+        original_queue = #global.action_queue,
+        checkpoint = "", -- TODO add_set_checkpoint
+        last1 = "",
+        last2 = "",
+    }
+    global.next_check = 0
+
+
+    -- TODO change_game_speed handler/action
+    game.speed = 5
+    game.players[1].surface.always_day=true
 end
 
 --script.on_load(function()
@@ -658,17 +652,18 @@ script.on_event(defines.events.on_tick, function(event)
         if (game.tick > 0 and game.tick % 500 == 0) then
             local pos = game.players[1].position
             -- TODO action index along with queue size
-            game.print(
-                "Tick " .. (game.tick / 100)
-                .. ", Pos: " .. string.format("%.1f, %.1f", pos.x, pos.y)
-                .. ", ActionQueue: " .. #global.action_queue
-                   .. " top: " .. (#global.action_queue > 0 and global.action_queue[1].cmd or "None")
-            )
+            game.print(string.format('Tick %4d %2d/%d complete, %2d remaining ckpt: %s, %s <= %s <= %s',
+                (game.tick / 100),
+                global.status.actions_complete, global.status.original_queue, #global.action_queue,
+                global.status.checkpoint,
+                (#global.action_queue > 0 and global.action_queue[1].cmd or "None"),
+                global.status.last1, global.status.last2))
         end
         action_check(game.players[1])
 
         if #global.action_queue == 0 then
             game.speed = 0.02
+            global.speedrunRunning = false
         end
     end
 end)
