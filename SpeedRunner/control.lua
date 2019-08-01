@@ -399,7 +399,7 @@ function add_wait(ticks, msg)
     add_action(
         {cmd="wait",
          handler= function(player, action)
-            game.print("Waiting " .. action.ticks .. " tick(s) " .. "@" .. game.tick .. ": " .. action.msg)
+            game.print("Waiting " .. action.ticks .. " tick(s) " .. "@" .. math.ceil(game.tick/60) .. "s : " .. action.msg)
             global.next_check = game.tick + action.ticks
             return true
          end,
@@ -496,7 +496,7 @@ function setupQueue()
 ---- QUEUE START
 
     set_checkpoint("Start")
-    add_change_speed(15)
+    add_change_speed(30)
     add_run_to(0, 1.5)
 
 ---- First iron furnace
@@ -755,8 +755,6 @@ function setupQueue()
     -- Done
 
 ---- Iron row two
-    add_change_speed(2)
-
     set_checkpoint("Iron Row 2")
 
     -- Get all coal on hand.
@@ -781,7 +779,7 @@ function setupQueue()
             add_insert_in_each("burner-mining-drill", "coal", 2,   {{4, -1}, {16, 0}})
         add_run_to( 0.5, 1.5)
 
-        add_print_inventory{["coal"]=5, ["stone"]=20, ["iron"]=36}
+        add_print_inventory({["coal"]=5, ["stone"]=20, ["iron"]=36}, false)
 
         -- Start crafting 4 of each
         add_add_craft("burner-mining-drill", 4, false) -- 4s x 4 = 16s
@@ -814,6 +812,52 @@ function setupQueue()
     end
     -- Done
 
+---- Extra coal
+    set_checkpoint("Big Coal")
+
+    -- TODO 'get-in-reach'
+    add_collect_from("wooden-chest", "stone", 1000, {{4, 0}, {8, 1}}, false)
+    add_collect_from("stone-furnace", "iron-plate", 36, {{0, 4}, {5, 8}})
+    add_print_inventory({["coal"]=2, ["stone"]=20, ["iron"]=36}, false)
+    add_add_craft("burner-mining-drill", 4, false)
+    -- for copper in a second
+    add_collect_from("stone-furnace", "iron-plate", 36, {{0, 4}, {5, 8}})
+
+    add_run_to(-5.5, 1.5)
+    for i=0,1 do
+        add_wait_inventory("burner-mining-drill", 2)
+        add_build_at("burner-mining-drill",               -9,  -3-2*i, defines.direction.west)
+        add_build_at("burner-mining-drill",               -11, -3-2*i, defines.direction.east)
+        add_insert_in_each("burner-mining-drill", "coal", 1,   {{-11, -5}, {-9, -3}})
+    end
+
+    -- collect ALL coal
+    add_collect_from("burner-mining-drill", "coal", 1000, {{-11, -7}, {-1, -3}}, false)
+
+---- Copper!
+    set_checkpoint("Copper")
+    add_change_speed(2)
+
+    -- Get All Stone -- TODO function
+    add_run_to( 8, 1.5)
+        add_collect_from("wooden-chest", "stone", 40, {{4, 0}, {16, 1}})
+        add_add_craft("burner-mining-drill", 2, false) -- Start crafting
+    add_run_to( 0.5, 1.5)
+
+    add_run_to(-1.5, 1.5) add_run_to(-1.5, 7)
+        add_collect_from("stone-furnace", "iron-plate", 18, {{0, 4}, {1, 16}}, false)
+        add_add_craft("burner-mining-drill", 2, false)
+        add_add_craft("stone-furnace", 4, false)
+    add_run_to(-1.5, 1.5) add_run_to( 0.5, 1.5)
+
+    add_run_to(-19, 1.5)
+    for j=0,3 do -- inclusive of end because 1-indexed probably
+        add_wait_inventory("stone-furnace", 1)
+        add_build_at("burner-mining-drill",  -22, 2+2*j, defines.direction.east)
+        add_build_at("stone-furnace",        -20, 2+2*j, defines.direction.east)
+        add_insert_in_each("burner-mining-drill", "coal", 5,   {{-22, 2}, {-20, 10}}) -- 25 * 5 = 2m
+        add_insert_in_each("stone-furnace",       "coal", 3,   {{-22, 2}, {-20, 10}})
+    end
 
 --]]
 -- Final stuff
@@ -871,11 +915,11 @@ script.on_event(defines.events.on_tick, function(event)
     end
 
     if global.speedrunRunning then
-        if (game.tick > 0 and game.tick % 500 == 0) then
+        if (game.tick > 0 and game.tick % 600 == 0) then -- 10s
             local pos = game.players[1].position
             -- TODO action index along with queue size
             game.print(string.format('Tick %4d %2d/%d complete, %2d remaining, ckpt: %s, %s <= %s <= %s',
-                (game.tick / 100),
+                (game.tick / 60),
                 global.status.actions_complete, global.status.original_queue, #global.action_queue,
                 global.status.checkpoint,
                 (#global.action_queue > 0 and global.action_queue[1].cmd or "None"),
