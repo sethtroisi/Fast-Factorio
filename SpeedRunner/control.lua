@@ -12,29 +12,15 @@ function action_check(player)
     action = global.action_queue[1]
 
     if action.cmd == "build_at" then
-        if build_at(player, action) then
+        if action.handler(player, action) then
             table.remove(global.action_queue, 1)
         else
             printAndQuit('Failed "build_at" ' .. serpent.line(action))
             return
         end
-    elseif action.cmd == "wait" then
-        game.print("Waiting " .. action.ticks .. " tick(s) " .. "@" .. game.tick .. ": " .. action.msg)
-        global.next_check = game.tick + action.ticks
-        table.remove(global.action_queue, 1)
     else
-        action_handler = {
-            run_to = run_to,
-            mine_at = mine_at,
-            insert_in = insert_in,
-            insert_in_each = insert_in_each,
-            add_craft = add_craft,
-            collect_from = collect_from,
-        }
-
-        local handler = action_handler[action.cmd]
-        if handler then
-            if handler(player, action) then
+        if action.handler ~= nil then
+            if action.handler(player, action) then
                 table.remove(global.action_queue, 1)
             else
                 -- Should try to do crafting at the same time?
@@ -316,38 +302,45 @@ end
 
 function add_run_to(x, y)
     table.insert(global.action_queue,
-        {cmd="run_to", run_goal={x=x, y=y}})
+        {cmd="run_to", handler=run_to,
+         run_goal={x=x, y=y}})
 end
 
 function add_mine_at(x, y, name, c)
     table.insert(global.action_queue,
-        {cmd="mine_at", name=name, count=c, position={x,y}})
+        {cmd="mine_at", handler=mine_at,
+         name=name, count=c, position={x,y}})
 end
 
 function add_build_at(name, x, y, orient)
     table.insert(global.action_queue,
-        {cmd="build_at", name=name, position={x, y}, orient=orient})
+        {cmd="build_at", handler=build_at,
+         name=name, position={x, y}, orient=orient})
 end
 
 function add_insert_in(into, item, count, x, y)
     table.insert(global.action_queue,
-        {cmd="insert_in", position={x, y}, into=into, item=item, count=count})
+        {cmd="insert_in", handler=insert_in,
+         position={x, y}, into=into, item=item, count=count})
 end
 
 function add_insert_in_each(into, item, in_each, area)
     table.insert(global.action_queue,
-        {cmd="insert_in_each", into=into, item=item, in_each=in_each, area=area})
+        {cmd="insert_in_each", handler=insert_in_each,
+         into=into, item=item, in_each=in_each, area=area})
 end
 
 function add_add_craft(name, count, wait)
     table.insert(global.action_queue,
-        {cmd="add_craft", name=name, count=count, wait=wait, queued=false})
+        {cmd="add_craft", handler=add_craft,
+         name=name, count=count, wait=wait, queued=false})
 end
 
 function add_collect_from(name, item, inv_count, max_per_machine, area)
     -- inv_count => amount to have in inventory after.
     table.insert(global.action_queue,
-        {cmd="collect_from", name=name, item=item,
+        {cmd="collect_from", handler=collect_from,
+         name=name, item=item,
          area=area,
          inv_count=inv_count, max_per_machine=max_per_machine,
         })
@@ -355,7 +348,13 @@ end
 
 function add_wait(ticks, msg)
     table.insert(global.action_queue,
-        {cmd="wait", ticks=ticks, msg=msg})
+        {cmd="wait",
+         handler= function(player, action)
+            game.print("Waiting " .. action.ticks .. " tick(s) " .. "@" .. game.tick .. ": " .. action.msg)
+            global.next_check = game.tick + action.ticks
+            return true
+         end,
+         ticks=ticks, msg=msg})
 end
 
 -------------------
@@ -544,8 +543,7 @@ function runOnce()
     add_add_craft("burner-mining-drill", 1, false) -- 2 stone
 
     add_mine_at(2, -1, "stone", 3)
-    add_add_craft("stone-furnace", 1, false) -- 0 stoneme.tick
-
+    add_add_craft("stone-furnace", 1, false) -- 0 stone
 
     -- Mine extra stone waiting for craft
     add_mine_at(2, -1, "stone", 3)
@@ -587,7 +585,7 @@ script.on_event(defines.events.on_tick, function(event)
         action_check(game.players[1])
 
         if #global.action_queue == 0 then
-            game.speed = 0.01
+            game.speed = 0.02
         end
     end
 end)
