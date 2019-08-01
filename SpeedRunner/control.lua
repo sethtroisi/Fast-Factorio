@@ -1,8 +1,8 @@
 function action_check(player)
-    local pos = player.position
+    local status = global.status
 
     if game.tick < global.next_check then
-        -- global.status.ticks_waiting
+        status.ticks_waiting = status.ticks_waiting + 1
         return
     end
 
@@ -10,7 +10,6 @@ function action_check(player)
         return
     end
 
-    local status = global.status
     local action = global.action_queue[1]
 
     if action.cmd == "build_at" then
@@ -50,6 +49,11 @@ function printAndQuit(msg)
     -- TODO log more debug
     global.speedrunRunning = false
     game.speed = 0.02
+end
+
+function assertAndQuit(cond, msg)
+    -- TODO print status
+    assert(cond, msg)
 end
 
 function floating_text(msg, pos)
@@ -278,12 +282,13 @@ function collect_from(player, action)
         return false
     end
 
+    -- TODO try to collect evenly from machines
     for key, entity in pairs(found) do
         local inventory = entity.get_output_inventory()
         local item_count = inventory.get_item_count(action.item)
         --game.print(key .. " " .. entity.name .. " " .. serpent.line(entity.position) .. ": " .. item_count)
 
-        local to_pull = math.min(to_get, math.min(item_count, action.max_per_machine))
+        local to_pull = math.min(to_get, item_count)
         if to_pull > 0 then
             local inserted = player.insert({name=action.item, count=to_pull})
             assert(inserted == to_pull, "Didn't find " .. to_pull)
@@ -297,15 +302,15 @@ function collect_from(player, action)
         end
     end
 
-    if to_get > 0 then
+    if to_get > 0 and action.wait ~= false then
         -- wait 0.2s and try again
         global.next_check = game.tick + 20
-        game.print("waiting at " .. serpent.line(action) .. " need " .. to_get .. " more")
+        game.print("waiting need " .. to_get .. " more" .. action.item .. " " .. serpent.item(action.area))
         return false
     end
 
     game.print("  Stocked " .. player.get_item_count(action.item) .. " " .. action.item)
-    return to_get == 0
+    return true
 end
 
 ----
@@ -314,10 +319,11 @@ function add_run_to(x, y)
     add_action({cmd="run_to", handler=run_to, run_goal={x=x, y=y}})
 end
 
-function add_mine_at(x, y, name, c, type)
+function add_mine_at(x, y, name, count, type)
+    -- mine exactly count
     add_action(
         {cmd="mine_at", handler=mine_at,
-         name=name, type=type, count=c, position={x,y}})
+         name=name, type=type, count=count, position={x,y}})
 end
 
 function add_build_at(name, x, y, orient)
@@ -344,13 +350,14 @@ function add_add_craft(name, count, wait)
          name=name, count=count, wait=wait, queued=false})
 end
 
-function add_collect_from(name, item, inv_count, max_per_machine, area)
+function add_collect_from(name, item, inv_count, area, wait)
     -- inv_count => amount to have in inventory after.
     add_action(
         {cmd="collect_from", handler=collect_from,
          name=name, item=item,
          area=area,
-         inv_count=inv_count, max_per_machine=max_per_machine,
+         inv_count=inv_count,
+         wait=wait
         })
 end
 
@@ -361,7 +368,7 @@ function add_wait_inventory(item, inv_count)
             -- TODO have global wait counter.
             local count = player.get_item_count(item)
             if count < inv_count then
-                game.print("Waiting for " .. inv_count .. " (have " .. count .. ")")
+                game.print("Waiting for " .. inv_count .. " (have " .. count .. ") " .. item)
                 global.next_check = game.tick + 20
                 return false
             end
@@ -380,7 +387,44 @@ function add_wait(ticks, msg)
             global.next_check = game.tick + action.ticks
             return true
          end,
-         ticks=ticks, msg=msg})
+         ticks=ticks, msg=msg
+        })
+end
+
+function add_print_inventory(verify, show)
+    add_action(
+        {cmd="print_inventory", verify=verify,
+         handler= function(player, action)
+            local inventory = player.get_main_inventory()
+            inventory.sort_and_merge()
+            for item, count in pairs(inventory.get_contents()) do
+                local to_verify = verify and verify[item] ~= nil
+                local verify_print = (to_verify and " (verify >= " .. verify[item] .. ")") or ""
+                if show ~= false then
+                    game.print(count .. " x " .. item .. verify_print);
+                end
+                if verify and verify[item] ~= nil then
+                    assert(count >= verify[item],
+                        "Don't have " .. verify[item] .. " of " .. item .. " only " .. count)
+                    verify[item] = nil
+                end
+            end
+            if #verify > 0 then
+                for item, count in pairs(verify) do
+                    game.print("Didn't have any " .. item)
+                end
+                printAndQuit("Bad Verify")
+            end
+            return true
+        end
+        })
+end
+
+function set_checkpoint(ckpt)
+    add_action({
+         cmd="ckpt", ckpt=ckpt,
+         handler=function(_, _) global.status.checkpoint = ckpt return true end
+    })
 end
 
 -------------------
@@ -410,7 +454,7 @@ function setupQueue()
 
     function early_iron(pre_stone, post_stone, post_craft_action, y)
         add_early_mine_stone(pre_stone)
-        add_collect_from("stone-furnace", "iron-plate",   9, 1000,  {{0, 4}, {0, 16}})
+        add_collect_from("stone-furnace", "iron-plate",   9, {{0, 4}, {0, 16}})
         add_add_craft("burner-mining-drill", 1, false)
 
         add_early_mine_stone(post_stone)
@@ -422,8 +466,10 @@ function setupQueue()
         add_build_at("burner-mining-drill",   2, y, defines.direction.west)
         add_build_at("stone-furnace",         0, y, defines.direction.west)
     end
+
 ----
 
+    set_checkpoint("Start")
 ---- First iron furnace
     add_build_at("burner-mining-drill", 2, 4, defines.direction.west)
     add_build_at("stone-furnace",       0, 4, defines.direction.west)
@@ -451,12 +497,13 @@ function setupQueue()
     add_insert_in("burner-mining-drill", "coal", 1,   2, 6)
 
 ---- 1st & 2nd coal miners
+    set_checkpoint("Coal 1&2")
     add_early_mine_stone(6)
-    add_collect_from("stone-furnace", "iron-plate",   9, 1000,  {{0, 4}, {0, 16}})
+    add_collect_from("stone-furnace", "iron-plate",   9, {{0, 4}, {0, 16}})
     add_add_craft("burner-mining-drill", 1, false)
 
     add_early_mine_stone(5)
-    add_collect_from("stone-furnace", "iron-plate",   9, 1000,  {{0, 4}, {0, 16}})
+    add_collect_from("stone-furnace", "iron-plate",   9, {{0, 4}, {0, 16}})
     add_add_craft("burner-mining-drill", 1, false)
 
     -- finish craft
@@ -477,7 +524,7 @@ function setupQueue()
 ---- 3rd iron
     early_iron(6, 6, mine_two_stone, 8)
 
-    add_collect_from("burner-mining-drill", "coal", 9, 1000,  {{-3, -7}, {-1, -3}})
+    add_collect_from("burner-mining-drill", "coal", 9, {{-3, -7}, {-1, -3}})
     add_insert_in_each("burner-mining-drill", "coal", 2,   {{2, 4}, {2, 8}})
     add_insert_in_each("stone-furnace",       "coal", 1,   {{0, 4}, {0, 8}})
 
@@ -488,8 +535,9 @@ function setupQueue()
     -- 13 wood
 
 ---- 1st Stone
+    set_checkpoint("Stone 1")
     -- TODO add_inventory_check(stone, 5)
-    add_collect_from("stone-furnace", "iron-plate",   9, 1000,  {{0, 4}, {0, 16}})
+    add_collect_from("stone-furnace", "iron-plate",   9, {{0, 4}, {0, 16}})
     add_add_craft("burner-mining-drill", 1, false)
 
     add_add_craft("wooden-chest", 3, false)
@@ -498,15 +546,14 @@ function setupQueue()
     add_build_at("burner-mining-drill",            4, -1, defines.direction.south)
     add_build_at("wooden-chest",                   4,  0, defines.direction.west)
 
-    add_collect_from("burner-mining-drill", "coal", 4, 1000,  {{-3, -7}, {-1, -3}})
+    add_collect_from("burner-mining-drill", "coal", 4, {{-3, -7}, {-1, -3}})
     add_insert_in("burner-mining-drill", "coal", 4,   4, -1)
-
 
 ---- Fuel all miners
     -- small wait
-    add_early_mine_stone(2) -- should have 5 now
+    add_early_mine_coal(2)
 
-    add_collect_from("burner-mining-drill", "coal", 12, 1000,  {{-3, -7}, {-1, -3}})
+    add_collect_from("burner-mining-drill", "coal", 12, {{-3, -7}, {-1, -3}})
 
     -- Technicall 3 * (3+2) = 15, but likely only need ~10 fuel
     -- Fuel every ~26s for burner-mining-drill, Fuel every ~45s for stone-furnace
@@ -515,51 +562,50 @@ function setupQueue()
 
 
 ---- More coal (more is better)
-    add_early_mine_stone(2)
+    set_checkpoint("Coal 2.0")
+    add_early_mine_stone(3)
 
-    add_collect_from("stone-furnace", "iron-plate",   9, 1000,  {{0, 4}, {0, 16}})
+    add_collect_from("stone-furnace", "iron-plate",   9, {{0, 4}, {0, 16}})
+    add_add_craft("burner-mining-drill", 1, false)
+
+    add_early_mine_stone(4)
+    add_collect_from("stone-furnace", "iron-plate",   9, {{0, 4}, {0, 16}})
     add_add_craft("burner-mining-drill", 1, false)
 
     add_early_mine_stone(3)
-    add_collect_from("stone-furnace", "iron-plate",   9, 1000,  {{0, 4}, {0, 16}})
-    add_add_craft("burner-mining-drill", 1, false) -- 4 now
-
-    add_early_mine_stone(2)
     add_wait_inventory("burner-mining-drill", 2)
 
     add_build_at("burner-mining-drill",               -1, -5, defines.direction.west)
     add_build_at("burner-mining-drill",               -3, -5, defines.direction.east)
 
-    -- ~tick 8600
-    add_wait(1, "coal-setup-34") -- wait one tick for drills to be constructed
-
-    -- TODO print_inventory
-    add_collect_from("burner-mining-drill", "coal", 2, 1000,  {{-3, -7}, {-1, -3}})
+    add_early_mine_coal(1)
+    add_collect_from("burner-mining-drill", "coal", 2, {{-3, -7}, {-1, -3}})
 
     add_insert_in("burner-mining-drill", "coal", 1,   -1, -5)
     add_insert_in("burner-mining-drill", "coal", 1,   -3, -5)
 
 ---- 4th Iron
-    early_iron(3, 5, mine_three_stone, 10)
+    set_checkpoint("Major Iron")
+    early_iron(4, 3, mine_three_stone, 10)
 
-    add_collect_from("burner-mining-drill", "coal", 12, 1000,  {{-3, -7}, {-1, -3}})
+    add_collect_from("burner-mining-drill", "coal", 12, {{-3, -7}, {-1, -3}})
     add_insert_in_each("burner-mining-drill", "coal", 3,   {{2, 4}, {2, 10}})
     add_insert_in_each("stone-furnace",       "coal", 2,   {{0, 4}, {0, 10}})
 
 ---- 5th Iron
-    add_collect_from("wooden-chest", "stone",  10, 1000,  {{4, 0}, {9, 1}})
+    add_collect_from("wooden-chest", "stone",  10, {{4, 0}, {9, 1}})
 
-    early_iron(0, 0, mine_three_stone, 12)
+    early_iron(1, 2, mine_three_stone, 12)
 
-    add_collect_from("burner-mining-drill", "coal", 15, 1000,  {{-3, -7}, {-1, -3}})
+    add_collect_from("burner-mining-drill", "coal", 15, {{-3, -7}, {-1, -3}})
     add_insert_in_each("burner-mining-drill", "coal", 3,   {{2, 4}, {2, 12}})
     add_insert_in_each("stone-furnace",       "coal", 2,   {{0, 4}, {0, 12}})
 
 ---- 2nd Stone
     add_early_mine_stone(1)
 
-    add_collect_from("wooden-chest",  "stone",        5, 1000,  {{4, 0}, {9, 1}})
-    add_collect_from("stone-furnace", "iron-plate",   9, 1000,  {{0, 4}, {0, 16}})
+    add_collect_from("wooden-chest",  "stone",        5, {{4, 0}, {9, 1}})
+    add_collect_from("stone-furnace", "iron-plate",   9, {{0, 4}, {0, 16}})
 
     add_add_craft("burner-mining-drill", 1, false)
 
@@ -569,22 +615,24 @@ function setupQueue()
     add_build_at("burner-mining-drill",            6, -1, defines.direction.south)
     add_build_at("wooden-chest",                   6,  0, defines.direction.west)
 
-    add_collect_from("burner-mining-drill", "coal", 6, 1000,  {{-3, -7}, {-1, -3}})
+    add_collect_from("burner-mining-drill", "coal", 6, {{-3, -7}, {-1, -3}})
     add_insert_in_each("burner-mining-drill", "coal", 3,      {{4, -1}, {6, -1}})
 
 ---- 6th Iron
-    add_early_mine_stone(3)
-    add_collect_from("wooden-chest",  "stone",        5, 1000,  {{4, 0}, {9, 1}})
-    add_collect_from("stone-furnace", "iron-plate",   9, 1000,  {{0, 4}, {0, 16}})
+    set_checkpoint("Iron 6")
 
+    add_early_mine_stone(3)
+    add_collect_from("wooden-chest",        "stone", 5, {{4, 0}, {9, 1}}, false)
+
+    add_collect_from("stone-furnace", "iron-plate",   9, {{0, 4}, {0, 16}})
     add_add_craft("burner-mining-drill", 1, false)
 
     add_early_mine_stone(2)
-    add_collect_from("wooden-chest",  "stone",        5, 1000,  {{4, 0}, {9, 1}})
+    add_collect_from("wooden-chest",        "stone", 5, {{4, 0}, {9, 1}}, false)
     add_add_craft("stone-furnace", 1, false)
 
     add_early_mine_coal(2)
-    add_collect_from("burner-mining-drill", "coal", 20, 1000,  {{-3, -7}, {-1, -3}})
+    add_collect_from("burner-mining-drill", "coal", 20, {{-3, -7}, {-1, -3}})
 
     -- TODO run_back with actions in the middle?
     add_run_to(-1.5, 5)
@@ -598,8 +646,15 @@ function setupQueue()
     add_run_to(0.5, 1.5)
     -- Done
 
+---- More Iron
+
+
+
 
 --]]
+-- Final stuff
+
+    add_print_inventory{["wooden-chest"]=1, ["wood"]=7}
 
     -- ~9 coal 7 wood 1 wooden-chest
     --    ~8 coal, ~6 stone, ~16 iron
@@ -635,12 +690,13 @@ function runOnce()
         checkpoint = "", -- TODO add_set_checkpoint
         last1 = "",
         last2 = "",
+        ticks_waiting = 0
     }
     global.next_check = 0
 
 
     -- TODO change_game_speed handler/action
-    game.speed = 5
+    game.speed = 10
     game.players[1].surface.always_day=true
 end
 
@@ -669,4 +725,16 @@ script.on_event(defines.events.on_tick, function(event)
 end)
 
 
------------
+-------------------
+------ Maths ------
+-------------------
+--[[
+Fuel every ~26s for burner-mining-drill, Fuel every ~45s for stone-furnace
+
+burner-mining-drills mine 1xcoal/4s (- 1 coal every 26s)
+stone-furnace + burner-mining-drill = 1coal/16
+
+1 coal miner powers ~ 4 miners + smelters
+
+
+--]]
