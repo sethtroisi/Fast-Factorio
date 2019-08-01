@@ -596,6 +596,50 @@ function runOnce()
     add_insert_in_each("burner-mining-drill", "coal", 3,   {{2, 4}, {2, 12}})
     add_insert_in_each("stone-furnace",       "coal", 2,   {{0, 4}, {0, 12}})
 
+---- 2nd Stone
+    add_early_mine_stone(1)
+
+    add_collect_from("wooden-chest",  "stone",        5, 1000,  {{4, 0}, {9, 1}})
+    add_collect_from("stone-furnace", "iron-plate",   9, 1000,  {{0, 4}, {0, 16}})
+
+    add_add_craft("burner-mining-drill", 1, false)
+
+    add_early_mine_stone(2)
+    add_wait_inventory("burner-mining-drill", 1)
+
+    add_build_at("burner-mining-drill",            6, -1, defines.direction.south)
+    add_build_at("wooden-chest",                   6,  0, defines.direction.west)
+
+    add_collect_from("burner-mining-drill", "coal", 6, 1000,  {{-3, -7}, {-1, -3}})
+    add_insert_in_each("burner-mining-drill", "coal", 3,      {{4, -1}, {6, -1}})
+
+---- 6th Iron
+    add_early_mine_stone(3)
+    add_collect_from("wooden-chest",  "stone",        5, 1000,  {{4, 0}, {9, 1}})
+    add_collect_from("stone-furnace", "iron-plate",   9, 1000,  {{0, 4}, {0, 16}})
+
+    add_add_craft("burner-mining-drill", 1, false)
+
+    add_early_mine_stone(2)
+    add_collect_from("wooden-chest",  "stone",        5, 1000,  {{4, 0}, {9, 1}})
+    add_add_craft("stone-furnace", 1, false)
+
+    add_early_mine_coal(2)
+    add_collect_from("burner-mining-drill", "coal", 20, 1000,  {{-3, -7}, {-1, -3}})
+
+    -- TODO run_back with actions in the middle?
+    add_run_to(-1.5, 5)
+    add_wait_inventory("stone-furnace", 1)
+
+    add_build_at("burner-mining-drill",   2, 14, defines.direction.west)
+    add_build_at("stone-furnace",         0, 14, defines.direction.west)
+    add_insert_in_each("burner-mining-drill", "coal", 3,   {{2, 4}, {2, 14}})
+    add_insert_in_each("stone-furnace",       "coal", 2,   {{0, 4}, {0, 14}})
+
+    add_run_to(0.5, 1.5)
+    -- Done
+
+
 --]]
 
     -- ~5 coal | ~5 coal, ~13 stone, ~9 iron
