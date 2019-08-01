@@ -60,6 +60,7 @@ function printAndQuit(msg)
     game.print(msg)
     -- TODO log more debug
     global.speedrunRunning = false
+    game.speed = 0.02
 end
 
 function floating_text(msg, pos)
@@ -161,7 +162,10 @@ function mine_at(player, action)
     -- # try and find the thing
     -- TODO check we're close? or just add 'run_to?'
 
-    local found = game.surfaces[1].find_entities_filtered{position = action.position, radius=1, type = "resource", limit = 2}
+    local found = game.surfaces[1].find_entities_filtered{
+        position = action.position, radius=1, limit = 1,
+        type = action.type or "resource"}
+
     if #found > 0 then
         assert(string.match(found[1].name, action.name), action.name .. " not found in " .. found[1].name)
 
@@ -325,10 +329,10 @@ function add_run_to(x, y)
          run_goal={x=x, y=y}})
 end
 
-function add_mine_at(x, y, name, c)
+function add_mine_at(x, y, name, c, type)
     table.insert(global.action_queue,
         {cmd="mine_at", handler=mine_at,
-         name=name, count=c, position={x,y}})
+         name=name, type=type, count=c, position={x,y}})
 end
 
 function add_build_at(name, x, y, orient)
@@ -445,20 +449,6 @@ function runOnce()
     add_early_mine_stone(3)
     mine_three_stone = get_action()
 
----
-
-
----- First iron furnace
-    add_build_at("burner-mining-drill", 2, 4, defines.direction.west)
-    add_build_at("stone-furnace",       0, 4, defines.direction.west)
-
-    --Fuel
-    add_early_mine_coal(1)
-    add_insert_in("burner-mining-drill", "coal", 1,   2, 4)
-    add_early_mine_coal(1)
-    add_insert_in("stone-furnace",       "coal", 1,   0, 4)
-
----- 2nd Iron Furnace
     function early_iron(pre_stone, post_stone, post_craft_action, y)
         add_early_mine_stone(pre_stone)
         add_collect_from("stone-furnace", "iron-plate",   9, 1000,  {{0, 4}, {0, 16}})
@@ -473,6 +463,19 @@ function runOnce()
         add_build_at("burner-mining-drill",   2, y, defines.direction.west)
         add_build_at("stone-furnace",         0, y, defines.direction.west)
     end
+----
+
+---- First iron furnace
+    add_build_at("burner-mining-drill", 2, 4, defines.direction.west)
+    add_build_at("stone-furnace",       0, 4, defines.direction.west)
+
+    --Fuel
+    add_early_mine_coal(1)
+    add_insert_in("burner-mining-drill", "coal", 1,   2, 4)
+    add_early_mine_coal(1)
+    add_insert_in("stone-furnace",       "coal", 1,   0, 4)
+
+---- 2nd Iron Furnace
 
     early_iron(5, 5, mine_two_coal, 6)
 
@@ -519,18 +522,22 @@ function runOnce()
     add_insert_in_each("burner-mining-drill", "coal", 2,   {{2, 4}, {2, 8}})
     add_insert_in_each("stone-furnace",       "coal", 1,   {{0, 4}, {0, 8}})
 
+---- A couple of trees
+    add_mine_at(-2, 1, "tree", 1, "tree")
+    add_mine_at(-1, 1, "tree", 1, "tree")
+    add_mine_at( 0, 1, "tree", 1, "tree")
+    -- 13 wood
+
 ---- 1st Stone
     -- TODO add_inventory_check(stone, 5)
     add_collect_from("stone-furnace", "iron-plate",   9, 1000,  {{0, 4}, {0, 16}})
     add_add_craft("burner-mining-drill", 1, false)
 
-    add_early_mine_stone(5)
-
-    add_collect_from("stone-furnace", "iron-plate",   8, 1000,  {{0, 4}, {0, 16}})
-    add_add_craft("iron-chest", 1, true) -- 0.5s SPEEDUP
+    add_add_craft("wooden-chest", 3, false)
+    add_early_mine_stone(2)
 
     add_build_at("burner-mining-drill",            4, -1, defines.direction.south)
-    add_build_at("iron-chest",                     4,  0, defines.direction.west)
+    add_build_at("wooden-chest",                     4,  0, defines.direction.west)
 
     add_collect_from("burner-mining-drill", "coal", 4, 1000,  {{-3, -7}, {-1, -3}})
     add_insert_in("burner-mining-drill", "coal", 4,   4, -1)
@@ -538,7 +545,7 @@ function runOnce()
 
 ---- Fuel all miners
     -- small wait
-    add_early_mine_stone(5) -- should have 10 now
+    add_early_mine_stone(3) -- should have 5 now
 
     add_collect_from("burner-mining-drill", "coal", 12, 1000,  {{-3, -7}, {-1, -3}})
 
@@ -586,12 +593,11 @@ function runOnce()
     add_insert_in_each("burner-mining-drill", "coal", 3,   {{2, 4}, {2, 12}})
     add_insert_in_each("stone-furnace",       "coal", 2,   {{0, 4}, {0, 12}})
 
-    -- ~3 coal | ~13 coal, ~15 stone, ~15 iron
-
-----
-
-    -- ~104 seconds
 --]]
+
+    -- ~5 coal | ~5 coal, ~13 stone, ~9 iron
+    -- ~101 seconds
+
 
     add_wait(1, "end") -- Get finish time
 
@@ -623,27 +629,3 @@ end)
 
 
 -----------
-
----
-    --https://github.com/pkulchenko/serpent
-
-
-    --script.raise_event(defines.events.on_put_item,
-    --    {position=X.position, player_index=builder.index, shift_build=false, built_by_moving=false, direction=X.direction})
-    --script.raise_event(defines.events.on_built_entity,
-    --    {created_entity=X, player_index=builder.index, tick=game.tick, name="on_built_entity"})
-    --script.raise_event(defines.events.on_preplayer_mined_item,
-    --    {entity=ent, player_index=builder.index, name="on_preplayer_mined_item"})
-
-
-    --local areaList = builder.surface.find_entities_filtered{area = searchArea, type = "entity-ghost", force=builder.force }
-    --local tileList = builder.surface.find_entities_filtered{area = searchArea, type = "tile-ghost", force=builder.force }
-    -- Merge the lists
-    -- for key, value in pairs(tileList) do
-        -- if not areaList then
-            -- areaList = {}
-        -- end
-        -- table.insert(areaList, value)
-    -- end
-    -- game.print("Found " .. #areaList .. " ghosts in area.")
----
