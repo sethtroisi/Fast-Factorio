@@ -129,6 +129,27 @@ script.on_event(defines.events.on_player_mined_item, function(event)
    end
 end)
 
+-- quick and dirty, one depth clone
+function table.clone(org)
+  return {table.unpack(org)}
+end
+
+function get_action()
+    -- to be paired with add_X like such
+    -- add_run_to(x, y);        -- Adds to global.action_queue
+    -- action = get_action():   -- Pops from global.action_queue and passes back
+    return table.remove(global.action_queue)
+end
+
+function add_action(action)
+    table.insert(global.action_queue, action)
+end
+
+function add_run_to(x, y)
+    table.insert(global.action_queue,
+        {cmd="run_to", handler=run_to,
+         run_goal={x=x, y=y}})
+end
 
 function mine_at(player, action)
     -- TODO add to a setting
@@ -160,11 +181,13 @@ end
 
 function build_at(player, action)
     if player.get_item_count(action.name) < 1 then
+        game.print("build_at, did not have " .. action.name)
         return false
     end
 
     local surface = game.surfaces[1]
     if not surface.can_place_entity{name=action.name, position=action.position, direction=action.orient} then
+        game.print("build_at, can not place " .. serpent.line(action.position))
         return false
     end
 
@@ -233,10 +256,6 @@ function insert_in_each(player, action)
 end
 
 function add_craft(player, action)
---    if player.get_item_count(action.name) < action.count then
---        return false
---    end
-
     if action.wait and action.count == 0 then
         return player.crafting_queue_size == 0
     end
@@ -346,6 +365,24 @@ function add_collect_from(name, item, inv_count, max_per_machine, area)
         })
 end
 
+function add_wait_inventory(item, inv_count)
+    table.insert(global.action_queue,
+        {cmd="wait_inventory",
+         handler= function(player, action)
+            -- TODO have global wait counter.
+            local count = player.get_item_count(item)
+            if count < inv_count then
+                game.print("Waiting for " .. inv_count .. " (have " .. count .. ")")
+                global.next_check = game.tick + 20
+                return false
+            end
+            return true
+         end,
+         item=item, -- for debug printing
+         inv_count=inv_count,
+        })
+end
+
 function add_wait(ticks, msg)
     table.insert(global.action_queue,
         {cmd="wait",
@@ -383,58 +420,85 @@ function runOnce()
 
     game.print("Adding actions to queue")
 
-    -- TODO change_game_speed
+    game.players[1].surface.always_day=true
+
+    -- TODO change_game_speed handler/action
     game.speed = 5
 
     add_run_to(0, 1.5)
+
+--- Setup early game shortcuts
+    function add_early_mine_coal(count)
+        add_mine_at(0, -1, "coal", count)
+    end
+
+    function add_early_mine_stone(count)
+        add_mine_at(2, -1, "stone", count)
+    end
+
+    add_early_mine_coal(2)
+    mine_two_coal = get_action()
+
+    add_early_mine_stone(2)
+    mine_two_stone = get_action()
+
+    add_early_mine_stone(3)
+    mine_three_stone = get_action()
+
+---
+
 
 ---- First iron furnace
     add_build_at("burner-mining-drill", 2, 4, defines.direction.west)
     add_build_at("stone-furnace",       0, 4, defines.direction.west)
 
     --Fuel
-    add_mine_at(0, -1, "coal", 1)
+    add_early_mine_coal(1)
     add_insert_in("burner-mining-drill", "coal", 1,   2, 4)
-    add_mine_at(0, -1, "coal", 1)
+    add_early_mine_coal(1)
     add_insert_in("stone-furnace",       "coal", 1,   0, 4)
 
 ---- 2nd Iron Furnace
-    add_mine_at(2, -1, "stone", 5)
-    add_collect_from("stone-furnace", "iron-plate",   9, 1000,  {{0, 4}, {0, 16}})
-    add_add_craft("burner-mining-drill", 1, false)
+    function early_iron(pre_stone, post_stone, post_craft_action, y)
+        add_early_mine_stone(pre_stone)
+        add_collect_from("stone-furnace", "iron-plate",   9, 1000,  {{0, 4}, {0, 16}})
+        add_add_craft("burner-mining-drill", 1, false)
 
-    add_mine_at(2, -1, "stone", 5)
-    add_add_craft("stone-furnace", 1, false)
+        add_early_mine_stone(post_stone)
+        add_add_craft("stone-furnace", 1, false)
 
-    -- Long enough for crafts to complete
-    add_mine_at(0, -1, "coal", 2)
+        add_action(post_craft_action)
+        add_wait_inventory("stone-furnace", 1)
 
-    add_build_at("burner-mining-drill",               2, 6, defines.direction.west)
-    add_build_at("stone-furnace",                     0, 6, defines.direction.west)
+        add_build_at("burner-mining-drill",   2, y, defines.direction.west)
+        add_build_at("stone-furnace",         0, y, defines.direction.west)
+    end
+
+    early_iron(5, 5, mine_two_coal, 6)
 
 --- Fuel everything up
     add_insert_in("burner-mining-drill", "coal", 1,   2, 4)
     add_insert_in("burner-mining-drill", "coal", 1,   2, 6)
 
-    add_mine_at(0, -1, "coal", 2)
+    add_early_mine_coal(2)
     add_insert_in("stone-furnace",       "coal", 1,   0, 4)
     add_insert_in("stone-furnace",       "coal", 1,   0, 6)
 
-    add_mine_at(0, -1, "coal", 2)
+    add_early_mine_coal(2)
     add_insert_in("burner-mining-drill", "coal", 1,   2, 4)
     add_insert_in("burner-mining-drill", "coal", 1,   2, 6)
 
 ---- 1st & 2nd coal miners
-    add_mine_at(2, -1, "stone", 6)
+    add_early_mine_stone(6)
     add_collect_from("stone-furnace", "iron-plate",   9, 1000,  {{0, 4}, {0, 16}})
     add_add_craft("burner-mining-drill", 1, false)
 
-    add_mine_at(2, -1, "stone", 5)
+    add_early_mine_stone(5)
     add_collect_from("stone-furnace", "iron-plate",   9, 1000,  {{0, 4}, {0, 16}})
     add_add_craft("burner-mining-drill", 1, false)
 
     -- finish craft
-    add_mine_at(0, -1, "coal", 4)
+    add_early_mine_coal(4)
 
     add_build_at("burner-mining-drill",               -1, -3, defines.direction.west)
     add_build_at("burner-mining-drill",               -3, -3, defines.direction.east)
@@ -442,29 +506,16 @@ function runOnce()
     add_insert_in("burner-mining-drill", "coal", 1,   -3, -3)
 
 ---- Refuel iron
-    add_mine_at(0, -1, "coal", 4)
+    add_early_mine_coal(4)
     add_insert_in("burner-mining-drill", "coal", 2,   2, 4)
     add_insert_in("burner-mining-drill", "coal", 2,   2, 6)
     add_insert_in("stone-furnace",       "coal", 1,   0, 4)
     add_insert_in("stone-furnace",       "coal", 1,   0, 6)
 
 ---- 3rd iron
-    add_mine_at(2, -1, "stone", 6)
-    add_collect_from("stone-furnace", "iron-plate",   9, 1000,  {{0, 4}, {0, 16}})
-    add_add_craft("burner-mining-drill", 1, false)
+    early_iron(6, 6, mine_two_stone, 8)
 
-    add_mine_at(2, -1, "stone", 6)
-    add_collect_from("stone-furnace", "iron-plate",   9, 1000,  {{0, 4}, {0, 16}})
-    add_add_craft("stone-furnace", 1, false)
-
-    -- Mine extra stone waiting for craft
-    add_mine_at(2, -1, "stone", 2)
-
-    -- Collect and spread fuel
     add_collect_from("burner-mining-drill", "coal", 9, 1000,  {{-3, -7}, {-1, -3}})
-    add_build_at("burner-mining-drill",               2, 8, defines.direction.west)
-    add_build_at("stone-furnace",                     0, 8, defines.direction.west)
-
     add_insert_in_each("burner-mining-drill", "coal", 2,   {{2, 4}, {2, 8}})
     add_insert_in_each("stone-furnace",       "coal", 1,   {{0, 4}, {0, 8}})
 
@@ -473,7 +524,7 @@ function runOnce()
     add_collect_from("stone-furnace", "iron-plate",   9, 1000,  {{0, 4}, {0, 16}})
     add_add_craft("burner-mining-drill", 1, false)
 
-    add_mine_at(2, -1, "stone", 5)
+    add_early_mine_stone(5)
 
     add_collect_from("stone-furnace", "iron-plate",   8, 1000,  {{0, 4}, {0, 16}})
     add_add_craft("iron-chest", 1, true) -- 0.5s SPEEDUP
@@ -484,9 +535,10 @@ function runOnce()
     add_collect_from("burner-mining-drill", "coal", 4, 1000,  {{-3, -7}, {-1, -3}})
     add_insert_in("burner-mining-drill", "coal", 4,   4, -1)
 
+
 ---- Fuel all miners
     -- small wait
-    add_mine_at(2, -1, "stone", 5) -- Should have 10 now
+    add_early_mine_stone(5) -- should have 10 now
 
     add_collect_from("burner-mining-drill", "coal", 12, 1000,  {{-3, -7}, {-1, -3}})
 
@@ -495,17 +547,18 @@ function runOnce()
     add_insert_in_each("burner-mining-drill", "coal", 3,   {{2, 4}, {2, 8}})
     add_insert_in_each("stone-furnace",       "coal", 2,   {{0, 4}, {0, 8}})
 
+
 ---- More coal (more is better)
-    add_mine_at(2, -1, "stone", 2)
+    add_early_mine_stone(2)
 
     add_collect_from("stone-furnace", "iron-plate",   9, 1000,  {{0, 4}, {0, 16}})
     add_add_craft("burner-mining-drill", 1, false)
 
-    add_mine_at(2, -1, "stone", 2)
+    add_early_mine_stone(2)
     add_collect_from("stone-furnace", "iron-plate",   9, 1000,  {{0, 4}, {0, 16}})
     add_add_craft("burner-mining-drill", 1, false) -- 4 now
 
-    add_mine_at(2, -1, "stone", 3)
+    add_early_mine_stone(3)
 
     add_build_at("burner-mining-drill",               -1, -5, defines.direction.west)
     add_build_at("burner-mining-drill",               -3, -5, defines.direction.east)
@@ -520,36 +573,14 @@ function runOnce()
     add_insert_in("burner-mining-drill", "coal", 1,   -3, -5)
 
 ---- 4th Iron
-    add_mine_at(2, -1, "stone", 2)
-
-    add_collect_from("stone-furnace", "iron-plate",   9, 1000,  {{0, 4}, {0, 16}})
-    add_add_craft("burner-mining-drill", 1, false) -- 4 now
-
-    add_mine_at(2, -1, "stone", 5)
-    add_add_craft("stone-furnace", 1, false)
-
-    -- Mine extra stone waiting for craft
-    add_mine_at(2, -1, "stone", 3)
-
-    add_build_at("burner-mining-drill",               2, 10, defines.direction.west)
-    add_build_at("stone-furnace",                     0, 10, defines.direction.west)
+    early_iron(2, 5, mine_three_stone, 10)
 
     add_collect_from("burner-mining-drill", "coal", 12, 1000,  {{-3, -7}, {-1, -3}})
     add_insert_in_each("burner-mining-drill", "coal", 3,   {{2, 4}, {2, 10}})
     add_insert_in_each("stone-furnace",       "coal", 2,   {{0, 4}, {0, 10}})
 
 ---- 5th Iron
-    add_collect_from("stone-furnace", "iron-plate",   9, 1000,  {{0, 4}, {0, 16}})
-    add_add_craft("burner-mining-drill", 1, false) -- 2 stone
-
-    add_mine_at(2, -1, "stone", 3)
-    add_add_craft("stone-furnace", 1, false) -- 0 stone
-
-    -- Mine extra stone waiting for craft
-    add_mine_at(2, -1, "stone", 3)
-
-    add_build_at("burner-mining-drill",               2, 12, defines.direction.west)
-    add_build_at("stone-furnace",                     0, 12, defines.direction.west)
+    early_iron(0, 3, mine_three_stone, 12)
 
     add_collect_from("burner-mining-drill", "coal", 15, 1000,  {{-3, -7}, {-1, -3}})
     add_insert_in_each("burner-mining-drill", "coal", 3,   {{2, 4}, {2, 12}})
