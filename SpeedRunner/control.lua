@@ -534,10 +534,10 @@ function runOnce()
     add_add_craft("burner-mining-drill", 1, false)
 
     add_add_craft("wooden-chest", 3, false)
-    add_early_mine_stone(2)
+    add_early_mine_stone(3)
 
     add_build_at("burner-mining-drill",            4, -1, defines.direction.south)
-    add_build_at("wooden-chest",                     4,  0, defines.direction.west)
+    add_build_at("wooden-chest",                   4,  0, defines.direction.west)
 
     add_collect_from("burner-mining-drill", "coal", 4, 1000,  {{-3, -7}, {-1, -3}})
     add_insert_in("burner-mining-drill", "coal", 4,   4, -1)
@@ -545,7 +545,7 @@ function runOnce()
 
 ---- Fuel all miners
     -- small wait
-    add_early_mine_stone(3) -- should have 5 now
+    add_early_mine_stone(2) -- should have 5 now
 
     add_collect_from("burner-mining-drill", "coal", 12, 1000,  {{-3, -7}, {-1, -3}})
 
@@ -561,11 +561,12 @@ function runOnce()
     add_collect_from("stone-furnace", "iron-plate",   9, 1000,  {{0, 4}, {0, 16}})
     add_add_craft("burner-mining-drill", 1, false)
 
-    add_early_mine_stone(2)
+    add_early_mine_stone(3)
     add_collect_from("stone-furnace", "iron-plate",   9, 1000,  {{0, 4}, {0, 16}})
     add_add_craft("burner-mining-drill", 1, false) -- 4 now
 
-    add_early_mine_stone(3)
+    add_early_mine_stone(2)
+    add_wait_inventory("burner-mining-drill", 2)
 
     add_build_at("burner-mining-drill",               -1, -5, defines.direction.west)
     add_build_at("burner-mining-drill",               -3, -5, defines.direction.east)
@@ -580,14 +581,16 @@ function runOnce()
     add_insert_in("burner-mining-drill", "coal", 1,   -3, -5)
 
 ---- 4th Iron
-    early_iron(2, 5, mine_three_stone, 10)
+    early_iron(3, 5, mine_three_stone, 10)
 
     add_collect_from("burner-mining-drill", "coal", 12, 1000,  {{-3, -7}, {-1, -3}})
     add_insert_in_each("burner-mining-drill", "coal", 3,   {{2, 4}, {2, 10}})
     add_insert_in_each("stone-furnace",       "coal", 2,   {{0, 4}, {0, 10}})
 
 ---- 5th Iron
-    early_iron(0, 3, mine_three_stone, 12)
+    add_collect_from("wooden-chest", "stone",  10, 1000,  {{4, 0}, {9, 1}})
+
+    early_iron(0, 0, mine_three_stone, 12)
 
     add_collect_from("burner-mining-drill", "coal", 15, 1000,  {{-3, -7}, {-1, -3}})
     add_insert_in_each("burner-mining-drill", "coal", 3,   {{2, 4}, {2, 12}})
@@ -596,8 +599,7 @@ function runOnce()
 --]]
 
     -- ~5 coal | ~5 coal, ~13 stone, ~9 iron
-    -- ~101 seconds
-
+    -- ~95 seconds
 
     add_wait(1, "end") -- Get finish time
 
