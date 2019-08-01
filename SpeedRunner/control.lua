@@ -76,7 +76,7 @@ function run_to(player, action)
 
     local deltaX = goal.x - player.position.x
     local deltaY = goal.y - player.position.y
-    local err = 0.5
+    local err = 0.4
 
     if math.abs(deltaX) <= err and math.abs(deltaY) <= err then
         return true
@@ -260,8 +260,9 @@ function add_craft(player, action)
     action.count = action.count - started
 
     if started == 0 then
-        -- wait 0.5s and try again
-        global.next_check = game.tick + 20
+        -- wait 0.2s and try again
+        global.next_check = game.tick + 100
+        return false
     else
         floating_text("+" .. started .. " crafts of " .. action.name, player.position)
     end
@@ -288,6 +289,11 @@ function collect_from(player, action)
         local item_count = inventory.get_item_count(action.item)
         --game.print(key .. " " .. entity.name .. " " .. serpent.line(entity.position) .. ": " .. item_count)
 
+        -- Don't take last coal from burner inserter
+        if action.item == "coal" and entity.name == "burner-minning-drill" then
+            item_count = item_count - 1
+        end
+
         local to_pull = math.min(to_get, item_count)
         if to_pull > 0 then
             local inserted = player.insert({name=action.item, count=to_pull})
@@ -305,7 +311,7 @@ function collect_from(player, action)
     if to_get > 0 and action.wait ~= false then
         -- wait 0.2s and try again
         global.next_check = game.tick + 20
-        game.print("waiting need " .. to_get .. " more" .. action.item .. " " .. serpent.item(action.area))
+        game.print("waiting need " .. to_get .. " more " .. action.item .. " " .. serpent.line(action))
         return false
     end
 
@@ -423,7 +429,12 @@ end
 function set_checkpoint(ckpt)
     add_action({
          cmd="ckpt", ckpt=ckpt,
-         handler=function(_, _) global.status.checkpoint = ckpt return true end
+         handler=function(_, _)
+             global.status.checkpoint = ckpt
+             -- TODO print full status line
+             game.print("  " .. ckpt)
+             return true
+         end
     })
 end
 
@@ -640,25 +651,76 @@ function setupQueue()
 
     add_build_at("burner-mining-drill",   2, 14, defines.direction.west)
     add_build_at("stone-furnace",         0, 14, defines.direction.west)
-    add_insert_in_each("burner-mining-drill", "coal", 3,   {{2, 4}, {2, 14}})
-    add_insert_in_each("stone-furnace",       "coal", 2,   {{0, 4}, {0, 14}})
+    add_insert_in_each("burner-mining-drill", "coal", 2,   {{2, 4}, {2, 14}})
+    add_insert_in_each("stone-furnace",       "coal", 1,   {{0, 4}, {0, 14}})
 
-    add_run_to(0.5, 1.5)
+    add_run_to(-1.5, 1.5)
+    add_run_to( 0.5, 1.5)
     -- Done
 
 ---- More Iron
+    set_checkpoint("Iron 7&8")
+    add_collect_from("wooden-chest",        "stone", 10, {{4, 0}, {9, 1}})
+    add_collect_from("stone-furnace", "iron-plate",   9, {{0, 4}, {0, 16}})
+    add_add_craft("burner-mining-drill", 1, false)
+    add_add_craft("stone-furnace", 1, false)
+    add_early_mine_stone(5)
 
+    add_collect_from("wooden-chest",        "stone", 10, {{4, 0}, {9, 1}})
+    add_collect_from("stone-furnace", "iron-plate",   9, {{0, 4}, {0, 16}})
+    add_add_craft("burner-mining-drill", 1, false) -- eats my earlier stone-furnace :/
+    add_add_craft("stone-furnace", 2, false)
+    add_early_mine_stone(4)
 
+    add_collect_from("burner-mining-drill", "coal", 20, {{-3, -7}, {-1, -3}})
 
+    add_run_to(-1.5, 7)
+    add_wait_inventory("stone-furnace", 2)
+
+    add_build_at("burner-mining-drill",   2, 16, defines.direction.west)
+    add_build_at("stone-furnace",         0, 16, defines.direction.west)
+    add_build_at("burner-mining-drill",   2, 18, defines.direction.west)
+    add_build_at("stone-furnace",         0, 18, defines.direction.west)
+    add_insert_in_each("burner-mining-drill", "coal", 2,   {{2, 10}, {2, 18}})
+    add_insert_in_each("stone-furnace",       "coal", 1,   {{0, 10}, {0, 18}})
+
+    add_collect_from("stone-furnace", "iron-plate",   18, {{0, 4}, {0, 16}})
+    add_run_to(-1.5, 1.5)
+    add_run_to( 0.5, 1.5)
+
+---- Stone time
+    set_checkpoint("Stone 3&4")
+    add_add_craft("wooden-chest", 1, false)
+
+    add_collect_from("wooden-chest",        "stone", 5, {{4, 0}, {9, 1}})
+    add_add_craft("burner-mining-drill", 1, false)
+
+    add_early_mine_stone(3)
+    add_collect_from("wooden-chest",        "stone", 5, {{4, 0}, {9, 1}})
+    add_add_craft("burner-mining-drill", 1, false)
+
+    add_early_mine_coal(2)
+    add_wait_inventory("burner-mining-drill", 2)
+
+    add_build_at("burner-mining-drill",            8, -1, defines.direction.south)
+    add_build_at("wooden-chest",                   8,  0, defines.direction.west)
+    add_build_at("burner-mining-drill",            10, -1, defines.direction.south)
+    add_build_at("wooden-chest",                   10,  0, defines.direction.west)
+
+    add_collect_from("burner-mining-drill", "coal", 8, {{-3, -7}, {-1, -3}})
+    add_insert_in_each("burner-mining-drill", "coal", 2,   {{4, -1}, {9, -1}})
+    -- Done
+
+---- Start thinging about copper?
 
 --]]
 -- Final stuff
 
-    add_print_inventory{["wooden-chest"]=1, ["wood"]=7}
+    add_print_inventory{["wood"]=5}
 
-    -- ~9 coal 7 wood 1 wooden-chest
-    --    ~8 coal, ~6 stone, ~16 iron
-    -- ~108 seconds
+    -- ~10 coal, 5 wood,
+    --    ~30 coal, ~20 iron, ~6 stone,
+    -- ~131 seconds
 
     add_wait(1, "end") -- Get finish time
 end
@@ -704,6 +766,11 @@ end
 --  runOnce()
 --end) .. serpent.line(action))
 script.on_event(defines.events.on_tick, function(event)
+    if global.speedRunSetupComplete ~= true then
+        runOnce()
+        global.speedrunRunning = true
+    end
+
     if global.speedrunRunning then
         if (game.tick > 0 and game.tick % 500 == 0) then
             local pos = game.players[1].position
