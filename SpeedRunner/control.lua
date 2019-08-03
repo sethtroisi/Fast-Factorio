@@ -17,6 +17,7 @@ function action_check(player)
         if action.handler(player, action) then
             table.remove(global.action_queue, 1)
             status.actions_complete = status.actions_complete + 1
+            status.ckpt_action_num = status.ckpt_action_num + 1
             status.last2 = status.last1
             status.last1 = action.cmd
         end
@@ -29,6 +30,16 @@ end
 -------------------
 ----- Helpers -----
 -------------------
+
+function print_status()
+    game.print(string.format('Tick %4d %2d/%d complete, ckpt: %s #%d',
+        (game.tick / 60),
+        global.status.actions_complete, global.status.original_queue,
+        global.status.checkpoint, global.status.ckpt_action_num))
+    game.print(string.format("  cmd: %s (last: %s, %s)",
+        (#global.action_queue > 0 and global.action_queue[1].cmd or "None"),
+        global.status.last1, global.status.last2))
+end
 
 function run_to(player, action)
     local goal = action.run_goal
@@ -352,6 +363,17 @@ function add_add_craft(name, count, wait)
          name=name, count=count, wait=wait, queued=false})
 end
 
+function add_set_autocraft(name, items)
+    add_action({
+        cmd="set_autocraft", name=name, items=items,
+        handler=function(player, action)
+            game.print("  autocrafting: " .. serpent.line(action.items))
+            global.autocraft = action.items
+            return true
+        end,
+    })
+end
+
 function add_collect_from(name, item, inv_count, area, wait)
     -- inv_count => amount to have in inventory after.
     add_action(
@@ -466,6 +488,7 @@ function setupQueue()
     add_change_speed(30)
     add_run_to(0, 1.5)
 
+    add_set_autocraft({"stone-furnace", "gears"})
 
 ---- First iron furnace
     add_build_at("burner-mining-drill", 2, 4, defines.direction.west)
@@ -845,8 +868,12 @@ function runOnce()
     setupQueue()
     game.print("Action Queue: " .. #global.action_queue .. " actions")
 
+    global.next_check = 0
+    global.autocraft = {}
+
     global.status = {
         actions_complete = 0,
+        ckpt_action_num = 0,
         original_queue = #global.action_queue,
         checkpoint = "", -- TODO add_set_checkpoint
         last1 = "",
@@ -854,7 +881,6 @@ function runOnce()
         ticks_waiting = 0,
 
     }
-    global.next_check = 0
 
     -- Can be helpful for avoiding things and in debugging.
     global.cheating = {
@@ -874,13 +900,7 @@ script.on_event(defines.events.on_tick, function(event)
     if global.speedrunRunning then
         if (game.tick > 0 and game.tick % 600 == 0) then -- 10s
             local pos = game.players[1].position
-            -- TODO action index along with queue size
-            game.print(string.format('Tick %4d %2d/%d complete, %2d remaining, ckpt: %s, %s <= %s <= %s',
-                (game.tick / 60),
-                global.status.actions_complete, global.status.original_queue, #global.action_queue,
-                global.status.checkpoint,
-                (#global.action_queue > 0 and global.action_queue[1].cmd or "None"),
-                global.status.last1, global.status.last2))
+            print_status()
         end
         action_check(game.players[1])
 

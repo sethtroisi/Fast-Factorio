@@ -5,14 +5,15 @@
 -----------------------
 
 function printAndQuit(msg)
+    print_status()
+    game.print(" ")
     game.print(msg)
-    -- TODO log more debug
     global.speedrunRunning = false
     game.speed = 0.02
 end
 
 function assertAndQuit(cond, msg)
-    -- TODO print status
+    print_status()
     assert(cond, msg)
 end
 
@@ -45,12 +46,12 @@ end
 
 function set_checkpoint(ckpt)
     add_action({
-         cmd="ckpt", ckpt=ckpt,
-         handler=function(_, _)
-             global.status.checkpoint = ckpt
-             -- TODO print full status line
-             game.print("  " .. ckpt)
-             return true
+        cmd="ckpt", ckpt=ckpt,
+        handler=function(_, _)
+            global.status.checkpoint = ckpt
+            global.status.ckpt_action_num = 0
+            print_status()
+            return true
          end,
     })
 end
