@@ -1,3 +1,5 @@
+require ("utils")
+
 function action_check(player)
     local status = global.status
 
@@ -11,59 +13,22 @@ function action_check(player)
     end
 
     local action = global.action_queue[1]
-
-    if action.cmd == "build_at" then
+    if action.handler ~= nil then
         if action.handler(player, action) then
             table.remove(global.action_queue, 1)
-                status.actions_complete = status.actions_complete + 1
-        else
-            printAndQuit('Failed "build_at" ' .. serpent.line(action))
-            return
+            status.actions_complete = status.actions_complete + 1
+            status.last2 = status.last1
+            status.last1 = action.cmd
         end
     else
-        if action.handler ~= nil then
-            if action.handler(player, action) then
-                table.remove(global.action_queue, 1)
-                status.actions_complete = status.actions_complete + 1
-                status.last2 = status.last1
-                status.last1 = action.cmd
-            else
-                -- Should try to do crafting at the same time?
-                return
-            end
-        else
-            printAndQuit("Unknown action: " .. serpent.line(action))
-        end
+        printAndQuit("Unknown action: " .. serpent.line(action))
     end
-
-    -- global.status.checkpoint,
 end
 
 
 -------------------
 ----- Helpers -----
 -------------------
-
-function printAndQuit(msg)
-    game.print(msg)
-    -- TODO log more debug
-    global.speedrunRunning = false
-    game.speed = 0.02
-end
-
-function assertAndQuit(cond, msg)
-    -- TODO print status
-    assert(cond, msg)
-end
-
-function floating_text(msg, pos)
-    game.surfaces[1].create_entity{
-        name="flying-text",
-        text=msg,
-        position=pos,
-        color={r=0.15,g=0.4,b=1}
-    }
-end
 
 function run_to(player, action)
     local goal = action.run_goal
@@ -106,8 +71,6 @@ function run_to(player, action)
     end
 
     player.walking_state = {walking = true, direction = dir}
-
-    global.next_check = game.tick + 1
     return false
 end
 
@@ -122,11 +85,6 @@ script.on_event(defines.events.on_player_mined_item, function(event)
         end
    end
 end)
-
--- quick and dirty, one depth clone
-function table.clone(org)
-  return {table.unpack(org)}
-end
 
 function get_action()
     -- to be paired with add_X like such
@@ -189,10 +147,7 @@ function build_at(player, action)
     player.remove_item({name=action.name, count=1})
     local t = surface.create_entity{name=action.name, position=action.position, direction=action.orient,
                                     raise_built=true, force=game.forces.player}
-    if not t then
-        return false
-    end
-
+    assertAndQuit(t ~= nil, 'Failed "build_at" ' .. serpent.line(action))
     return true
 end
 
@@ -434,25 +389,6 @@ function add_print_inventory(verify, show)
             return true
         end
         })
-end
-
-function set_checkpoint(ckpt)
-    add_action({
-         cmd="ckpt", ckpt=ckpt,
-         handler=function(_, _)
-             global.status.checkpoint = ckpt
-             -- TODO print full status line
-             game.print("  " .. ckpt)
-             return true
-         end,
-    })
-end
-
-function add_change_speed(speed)
-    add_action({
-         cmd="game.speed", speed=speed,
-         handler=function(_, _) game.speed = speed return true end,
-    })
 end
 
 -------------------
@@ -873,16 +809,6 @@ end
 
 -----
 
-script.on_event("start-stop-speedrun", function(event)
-    global.speedrunRunning = not global.speedrunRunning
-    game.print((global.speedrunRunning and "Starting" or "Stopping") .. " Speedrun")
-    if global.speedrunRunning then
-        if global.speedRunSetupComplete ~= true then
-            runOnce()
-        end
-    end
-end)
-
 function runOnce()
     if global.speedRunSetupComplete then return end
     global.speedRunSetupComplete = true
@@ -905,9 +831,6 @@ function runOnce()
     game.players[1].surface.always_day=true
 end
 
---script.on_load(function()
---  runOnce()
---end) .. serpent.line(action))
 script.on_event(defines.events.on_tick, function(event)
     if global.speedRunSetupComplete ~= true then
         runOnce()
