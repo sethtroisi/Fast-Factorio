@@ -33,17 +33,21 @@ end
 function run_to(player, action)
     local goal = action.run_goal
 
-    -- TODO move this under some option
-    if false then
-        game.players[1].teleport({goal.x, goal.y})
-        return true
-    end
-
     local deltaX = goal.x - player.position.x
     local deltaY = goal.y - player.position.y
     local err = 0.4
 
     if math.abs(deltaX) <= err and math.abs(deltaY) <= err then
+        return true
+    end
+
+    if global.cheating.teleport then
+        -- TODO check if something is in the way?
+        game.players[1].teleport({goal.x, goal.y})
+        local distance = math.sqrt(deltaX * deltaX + deltaY * deltaY)
+        local wait = math.ceil(distance / (8.902 / 60))
+        game.print("  teleported " .. distance .. " waiting " .. wait)
+        global.next_check = game.tick + wait
         return true
     end
 
@@ -77,7 +81,7 @@ end
 script.on_event(defines.events.on_player_mined_item, function(event)
     if global.speedrunRunning and #global.action_queue > 0 then
         local action = global.action_queue[1]
-        if action.cmd == "mine_at" then
+        if action.cmd == "mine_at" or action.cmd == "mine_area" then
             local player = game.players[event.player_index]
             if not (player and player.valid) then return end
 
@@ -101,32 +105,52 @@ function add_run_to(x, y)
     add_action({cmd="run_to", handler=run_to, run_goal={x=x, y=y}})
 end
 
-function mine_at(player, action)
-    -- TODO add to a setting
-    if false then
-        player.insert{name=action.name, count=action.count}
-        return true
-    end
+function mine_area(player, action)
+    if (action.count <= 0) then return true end
 
     -- # try and find the thing
-    -- TODO check we're close? or just add 'run_to?'
-
     local found = game.surfaces[1].find_entities_filtered{
-        position = action.position, radius=1, limit = 1,
-        type = action.type or "resource"}
+        area = action.area, radius = 2, limit = 100,
+        type = action.type}
 
-    if #found > 0 then
-        assert(string.match(found[1].name, action.name), action.name .. " not found in " .. found[1].name)
+    assertAndQuit(#found > 0, "Didn't find any " .. action.name .. " | " .. (action.type or "") .. " | " .. serpent.line(action.area))
+    assertAndQuit(string.match(found[1].name, action.name), action.name .. " not found in " .. found[1].name)
+    player.update_selected_entity(found[1].position)
 
---      Select the thing we are mining
-        player.update_selected_entity(found[1].position)
-        player.mining_state = {mining = true, position = found[1].position}
-        -- action.count is decremented in `on_player_mined_item`
+    -- Select the thing we are mining
+    player.update_selected_entity(found[1].position)
 
---      Why doesn't this work?
---        local tile = player.surface.get_tile(found[1].position.x, found[1].position.y)
---        player.mine_tile(tile)
-    end
+    assertAndQuit(
+        player.selected and player.can_reach_entity(player.selected),
+        "Can't reach to mine " .. action.name .. " @ " .. serpent.line(found[1].position))
+
+    player.mining_state = {mining = true, position = found[1].position}
+    -- action.count is decremented in `on_player_mined_item`
+    return action.count <= 0
+end
+
+function mine_at(player, action)
+    -- # try and find the thing
+    --local found = game.surfaces[1].find_entities_filtered{
+    --    position = action.position, radius=1, limit = 1,
+    --    type = action.type or "resource"}
+    --assertAndQuit(#found > 0, "Didn't find any " .. action.name .. " | " .. (action.type or "") .. " | " .. serpent.line(action.position))
+    --assertAndQuit(string.match(found[1].name, action.name), action.name .. " not found in " .. found[1].name)
+    --player.update_selected_entity(found[1].position)
+
+    if (action.count <= 0) then return true end
+
+    -- Select the thing we are mining
+    player.update_selected_entity(action.position)
+    --assertAndQuit(string.match(player.selected.name, action.name),
+    --              action.name .. " not found in " .. player.selected.name)
+
+    assertAndQuit(
+        player.selected and player.can_reach_entity(player.selected),
+        "Can't reach to mine " .. action.name .. " @ " .. serpent.line(action.position))
+
+    player.mining_state = {mining = true, position = action.position}
+    -- action.count is decremented in `on_player_mined_item`
 
     return action.count <= 0
 end
@@ -297,6 +321,13 @@ function add_mine_at(x, y, name, count, type)
          name=name, type=type, count=count, position={x,y}})
 end
 
+function add_mine_area(name, type, count, area)
+    add_action(
+        {cmd="mine_area", handler=mine_area,
+         name=name, type=type, count=count, area=area})
+end
+
+
 function add_build_at(name, x, y, orient)
     add_action(
         {cmd="build_at", handler=build_at,
@@ -435,6 +466,7 @@ function setupQueue()
     add_change_speed(30)
     add_run_to(0, 1.5)
 
+
 ---- First iron furnace
     add_build_at("burner-mining-drill", 2, 4, defines.direction.west)
     add_build_at("stone-furnace",       0, 4, defines.direction.west)
@@ -494,12 +526,7 @@ function setupQueue()
     add_insert_in_each("stone-furnace",       "coal", 1,   {{0, 4}, {0, 8}})
 
 ---- A couple of trees
-    add_mine_at(-2, 2, "tree", 1, "tree")
-    add_mine_at(-1, 2, "tree", 1, "tree")
-    add_mine_at( 0, 2, "tree", 1, "tree")
-    add_mine_at(-2, 1, "tree", 1, "tree")
-    add_mine_at(-1, 1, "tree", 1, "tree")
-    add_mine_at( 0, 1, "tree", 1, "tree")
+    add_mine_area("tree", "tree", 6, {{-2, 0}, {2, 2}})
     -- 21 wood
 
 ---- 1st Stone
@@ -752,7 +779,7 @@ function setupQueue()
     set_checkpoint("Big Coal")
 
     -- TODO 'get-in-reach'
-    add_collect_from("wooden-chest", "stone", 1000, {{4, 0}, {8, 1}}, false)
+    add_collect_from("wooden-chest", "stone", 1000, {{4, 0}, {16, 1}}, false)
     add_collect_from("stone-furnace", "iron-plate", 36, {{0, 4}, {5, 8}})
     add_print_inventory({["coal"]=2, ["stone"]=20, ["iron"]=36}, false)
     add_add_craft("burner-mining-drill", 4, false)
@@ -824,11 +851,18 @@ function runOnce()
         checkpoint = "", -- TODO add_set_checkpoint
         last1 = "",
         last2 = "",
-        ticks_waiting = 0
+        ticks_waiting = 0,
+
     }
     global.next_check = 0
 
-    game.players[1].surface.always_day=true
+    -- Can be helpful for avoiding things and in debugging.
+    global.cheating = {
+        teleport = false,
+        always_day = true,
+    }
+
+    game.players[1].surface.always_day = global.cheating.always_day
 end
 
 script.on_event(defines.events.on_tick, function(event)
