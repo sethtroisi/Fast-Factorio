@@ -5,7 +5,7 @@
 -----------------------
 
 function printAndQuit(msg)
-    print_status()
+    --print_status()
     game.print(" ")
     game.print(msg)
     global.speedrunRunning = false
@@ -13,7 +13,7 @@ function printAndQuit(msg)
 end
 
 function assertAndQuit(cond, msg)
-    print_status()
+    --print_status()
     assert(cond, msg)
 end
 
@@ -50,7 +50,7 @@ function set_checkpoint(ckpt)
         handler=function(_, _)
             global.status.checkpoint = ckpt
             global.status.ckpt_action_num = 0
-            print_status()
+            --print_status()
             return true
          end,
     })
