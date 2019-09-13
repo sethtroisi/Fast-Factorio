@@ -452,16 +452,22 @@ end
 -------------------
 
 function setupQueue()
+
+-- early game areas
     early_trees = {{-2, 0}, {2, 2}}   -- 2x2 (2x3?)
 
     coal_area = {{-11, -5}, {-1, -3}}   -- 2x6
-    stone_area = {{1, -6}, {6, -1}}     -- 5x5 (slightly zigged)
-    iron_area = {{0, 4}, {6, 18}}       -- 8x4 (furnace, mining, furnace, mining)
+    stone_area = {{1, -6}, {9, -1}}     -- 9x5 (slightly zigged)
+    iron_area = {{0, 4}, {9, 13}}       -- 8x8 (furnace, mining, furnace, mining)
     copper_area = {{-22, 2}, {-20, 10}} -- TODO
 
     coal_start = {-1, -3}
     iron_start = { 0,  4}
     stone_chest_start = { 2.5, -3.5}
+
+-- mid game_areas
+    iron_2_area = {{0, 4}, {9, 17}}
+    coal_2_area = {{-11, -5}, {-1, -3}}
 
 --- Setup early game shortcuts
     function add_early_mine_coal(count)
@@ -506,7 +512,7 @@ function setupQueue()
 ---- QUEUE START
 
     set_checkpoint("Start")
-    add_change_speed(5)
+    add_change_speed(10)
     add_run_to(0, 1.5)
 
     add_set_autocraft({"stone-furnace", "gears"})
@@ -728,7 +734,7 @@ function setupQueue()
     -- Done
 
 ---- Coal time
-    set_checkpoint("Coal 5&6 + 7&8")
+    set_checkpoint("Coal 5-8")
 
     for i = 0,1 do
         add_collect_from("stone-furnace", "iron-plate",   18, iron_area)
@@ -741,34 +747,27 @@ function setupQueue()
         add_build_at("burner-mining-drill",               -5, -5+2*i, defines.direction.west)
         add_build_at("burner-mining-drill",               -7, -5+2*i, defines.direction.east)
 
-        add_collect_from("burner-mining-drill", "coal", 4, {{-3, -7}, {-1, -3}})
-        add_fill_each_to("burner-mining-drill", "coal", 1,   {{-7, -7}, {-1, -3}})
+        add_collect_from("burner-mining-drill", "coal", 4, coal_area)
+        add_fill_each_to("burner-mining-drill", "coal", 1, coal_area)
     end
     -- Done
 
 ---- Iron row two
     set_checkpoint("Iron Row 2")
-
-    -- Get all coal on hand.
-    add_collect_from("burner-mining-drill", "coal", 1000, {{-7, -7}, {-1, -3}}, false)
+    add_change_speed(5)
 
     -- Get all iron (and refual)
-    add_run_to(-1.5, 1.5) add_run_to(-1.5, 7)
-        add_collect_from("stone-furnace", "iron-plate", 1000, {{0, 4}, {1, 16}}, false)
-        early_fuel_mining_smelter(2, 1, iron_area)
+    add_run_to(-1.5, 5)
+        add_collect_from("stone-furnace", "iron-plate", 1000, iron_area, false)
     add_run_to(-1.5, 1.5) add_run_to( 0.5, 1.5)
-
-    add_collect_from("burner-mining-drill", "coal", 1000, {{-7, -7}, {-1, -3}}, false)
 
     for i = 0,1 do
         -- Get all coal on hand.
-        add_collect_from("burner-mining-drill", "coal", 1000, {{-7, -7}, {-1, -3}}, false)
+        add_collect_from("burner-mining-drill", "coal", 1000, coal_area, false)
 
         -- Get all stone on hand.
-        add_run_to( 8, 1.5)
-            add_collect_from("wooden-chest", "stone", 1000, {{4, 0}, {16, 1}}, false)
-            add_fill_each_to("burner-mining-drill", "coal", 2,   {{4, -1}, {16, 0}})
-        add_run_to( 0.5, 1.5)
+        add_collect_from("wooden-chest", "stone", 1000, stone_area, false)
+        add_fill_each_to("burner-mining-drill", "coal", 2,   stone_area)
 
         add_print_inventory({["coal"]=5, ["stone"]=20, ["iron"]=36}, false)
 
@@ -777,10 +776,8 @@ function setupQueue()
         add_early_mine_stone(8)
 
         -- Get all stone on hand.
-        add_run_to( 8, 1.5)
-            add_collect_from("wooden-chest", "stone", 20, {{4, 0}, {16, 1}})
-            add_add_craft("stone-furnace", 4, false) -- 0.5s x 4 = 2s
-        add_run_to( 0.5, 1.5)
+        add_collect_from("wooden-chest", "stone", 20, stone_area)
+        add_add_craft("stone-furnace", 4, false)   -- 0.5s x 4 = 2s
         add_early_mine_stone(1)
 
         add_run_to(-1.5, 1.5) add_run_to(-1.5, 7 + 4*i)
@@ -794,8 +791,9 @@ function setupQueue()
         -- Fuel everything (but mostly new stuff)
         early_fuel_mining_smelter(2, 1, iron_area)
 
-        -- Get all iron while here
-        add_collect_from("stone-furnace", "iron-plate", 36, {{0, 4}, {1, 16}})
+        -- Get all iron while here (waiting for at least 36)
+        add_collect_from("stone-furnace", "iron-plate", 36, iron_area)
+        add_collect_from("stone-furnace", "iron-plate", 1000, iron_area, false)
 
         add_run_to(-1.5, 1.5)
         add_run_to( 0.5, 1.5)
@@ -806,24 +804,26 @@ function setupQueue()
     set_checkpoint("Big Coal")
 
     -- TODO 'get-in-reach'
-    add_collect_from("wooden-chest", "stone", 1000, {{4, 0}, {16, 1}}, false)
-    add_collect_from("stone-furnace", "iron-plate", 36, {{0, 4}, {5, 8}})
+    add_collect_from("wooden-chest", "stone", 1000, stone_area, false)
+    add_collect_from("stone-furnace", "iron-plate", 36, iron_area)
     add_print_inventory({["coal"]=2, ["stone"]=20, ["iron"]=36}, false)
     add_add_craft("burner-mining-drill", 4, false)
     -- for copper in a second
-    add_collect_from("stone-furnace", "iron-plate", 36, {{0, 4}, {5, 8}})
+    add_collect_from("stone-furnace", "iron-plate", 36, iron_area)
 
     add_run_to(-5.5, 1.5)
     for i=0,1 do
         add_wait_inventory("burner-mining-drill", 2)
         add_build_at("burner-mining-drill",               -9,  -3-2*i, defines.direction.west)
         add_build_at("burner-mining-drill",               -11, -3-2*i, defines.direction.east)
-        add_fill_each_to("burner-mining-drill", "coal", 1,   {{-11, -5}, {-9, -3}})
+        add_fill_each_to("burner-mining-drill", "coal", 1,   coal_2_area)
     end
 
     -- collect ALL coal
-    add_collect_from("burner-mining-drill", "coal", 1000, {{-11, -7}, {-1, -3}}, false)
+    add_collect_from("burner-mining-drill", "coal", 1000, coal_area, false)
 
+
+--[[
 ---- Copper!
     set_checkpoint("Copper")
     add_change_speed(2)
