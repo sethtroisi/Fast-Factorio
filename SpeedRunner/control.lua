@@ -193,7 +193,7 @@ function insert_in(player, action)
     end
 
     local found = game.surfaces[1].find_entity(action.into, action.position)
-    if not found then
+    if not found or #found == 0 then
         game.print("Did not find " .. action.into .. " at " .. serpent.line(action.position))
         return false
     end
@@ -207,7 +207,7 @@ end
 
 function fill_each_to(player, action)
     local found = game.surfaces[1].find_entities_filtered{name=action.into, area=action.area}
-    if not found then
+    if not found or #found == 0 then
         game.print("Did not find " .. action.into .. " at " .. serpent.line(action.area))
         return false
     end
@@ -272,7 +272,7 @@ function collect_from(player, action)
     end
 
     local found = game.surfaces[1].find_entities_filtered{name=action.name, area=action.area}
-    if not found then
+    if not found or #found == 0 then
         game.print("Did not find " .. action.name .. " at " .. serpent.line(action.area))
         return false
     end
@@ -452,6 +452,25 @@ end
 -------------------
 
 function setupQueue()
+    function check_area_and_highlight(area, highlight, contents)
+        -- Check area contains contents
+        local found = game.surfaces[1].find_entities_filtered{name=contents, area=area}
+        if not found or #found == 0 then
+            game.print("Did not find " .. contents .. " at " .. serpent.line(area))
+--            return false
+        end
+
+        game.print("Found: " .. serpent.line(found));
+
+        -- four corners
+        game.players[1].surface.set_tiles({
+            {name=highlight, position={area[1][1],area[1][2]}},
+            {name=highlight, position={area[1][1],area[2][2]}},
+            {name=highlight, position={area[2][1],area[1][2]}},
+            {name=highlight, position={area[2][1],area[2][2]}}})
+    end
+
+    game.print("Test 5")
 
 -- early game areas
     early_trees = {{-2, 0}, {2, 2}}   -- 2x2 (2x3?)
@@ -464,6 +483,13 @@ function setupQueue()
     coal_start = {-1, -3}
     iron_start = { 0,  4}
     stone_chest_start = { 2.5, -3.5}
+
+    check_area_and_highlight(coal_area, "lab-white", "coal")
+    check_area_and_highlight(stone_area, "lab-white", "stone")
+    check_area_and_highlight(iron_area, "lab-white", "stone")
+    check_area_and_highlight(copper_area, "lab-white", "stone")
+
+
 
 -- mid game_areas
     iron_2_area = {{0, 4}, {9, 17}}
@@ -512,9 +538,10 @@ function setupQueue()
 ---- QUEUE START
 
     set_checkpoint("Start")
-    add_change_speed(10)
-    add_run_to(0, 1.5)
+    add_run_to(14.5, -5)
+    --add_change_speed(10)
 
+--[[
     add_set_autocraft({"stone-furnace", "gears"})
 
 ---- First iron furnace
@@ -821,6 +848,7 @@ function setupQueue()
 
     -- collect ALL coal
     add_collect_from("burner-mining-drill", "coal", 1000, coal_area, false)
+--]]
 
 
 --[[
@@ -907,8 +935,7 @@ script.on_event(defines.events.on_tick, function(event)
         action_check(game.players[1])
 
         if #global.action_queue == 0 then
-            game.speed = 0.02
-            global.speedrunRunning = false
+            printAndQuit("Empty Action Queue")
         end
     end
 end)

@@ -9,7 +9,7 @@ function printAndQuit(msg)
     game.print(" ")
     game.print(msg)
     global.speedrunRunning = false
-    game.speed = 0.02
+    --game.speed = 0.02
 end
 
 function assertAndQuit(cond, msg)
